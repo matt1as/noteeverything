@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react'
 import { useNotes } from './NotesContext'
-import { ChevronRight, ChevronDown, Plus, Trash2, FileText, Settings, Github, LogOut, UploadCloud, DownloadCloud, Loader2 } from 'lucide-react'
+import { ChevronRight, ChevronDown, Plus, Trash2, FileText, Settings, Github, LogOut, Cloud, CloudOff, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSession, signIn, signOut } from 'next-auth/react'
 import Image from 'next/image'
@@ -77,54 +77,44 @@ const NoteItem = ({ noteId, level = 0 }: { noteId: string, level?: number }) => 
 }
 
 export default function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const { notes, addNote, config, setNotes } = useNotes()
+  const { notes, addNote, config, syncStatus, syncError, manualSync } = useNotes()
   const { data: session } = useSession()
-  const [isSyncing, setIsSyncing] = useState(false)
 
   const rootNotes = notes.filter((n) => !n.parentId)
 
-  const handlePush = async () => {
-    if (!config || !session) return alert("Please configure GitHub repo first")
-    setIsSyncing(true)
-    try {
-      const res = await fetch('/api/github/push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes, config })
-      })
-      if (!res.ok) {
-          const data = await res.json().catch(() => ({}))
-          throw new Error(data.errors ? data.errors.join('\n') : await res.text())
-      }
-      alert("Successfully pushed to GitHub!")
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : 'Unknown error'
-      alert(`Push Failed:\n${message}`)
-    } finally {
-      setIsSyncing(false)
-    }
-  }
+  // Render sync status indicator
+  const renderSyncStatus = () => {
+    if (!config || !session) return null
 
-  const handlePull = async () => {
-    if (!config || !session) return alert("Please configure GitHub repo first")
-    if (!confirm("This will overwrite local notes. Continue?")) return
-    setIsSyncing(true)
-    try {
-      const params = new URLSearchParams({
-        owner: config.owner,
-        repo: config.repo,
-        branch: config.branch
-      })
-      const res = await fetch(`/api/github/pull?${params.toString()}`)
-      if (!res.ok) throw new Error(await res.text())
-      const data = await res.json()
-      setNotes(data.notes)
-      alert("Successfully pulled from GitHub!")
-    } catch (e: unknown) {
-        const message = e instanceof Error ? e.message : 'Unknown error'
-        alert(`Pull Failed:\n${message}`)
-    } finally {
-        setIsSyncing(false)
+    switch (syncStatus) {
+      case 'syncing':
+        return (
+          <div className="flex items-center text-xs text-zinc-500 dark:text-zinc-400">
+            <Cloud size={12} className="mr-1.5 animate-pulse" />
+            <span>Syncing...</span>
+          </div>
+        )
+      case 'saved':
+        return (
+          <div className="flex items-center text-xs text-green-600 dark:text-green-400">
+            <Check size={12} className="mr-1.5" />
+            <span>All changes saved</span>
+          </div>
+        )
+      case 'error':
+        return (
+          <div className="flex items-center text-xs text-red-600 dark:text-red-400">
+            <CloudOff size={12} className="mr-1.5" />
+            <span>Sync error</span>
+          </div>
+        )
+      default:
+        return (
+          <div className="flex items-center text-xs text-zinc-400 dark:text-zinc-500">
+            <Cloud size={12} className="mr-1.5" />
+            <span>Auto-sync enabled</span>
+          </div>
+        )
     }
   }
 
@@ -164,26 +154,9 @@ export default function Sidebar({ onOpenSettings }: { onOpenSettings: () => void
       <div className="p-3 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/50 shrink-0">
         {session ? (
             <div className="flex flex-col space-y-3">
-                {/* Sync Controls */}
-                <div className="flex items-center space-x-1">
-                    <button 
-                        onClick={handlePush} 
-                        disabled={isSyncing}
-                        className="flex-1 flex items-center justify-center px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors disabled:opacity-50"
-                        title="Push to GitHub"
-                    >
-                        {isSyncing ? <Loader2 size={14} className="animate-spin mr-1.5" /> : <UploadCloud size={14} className="mr-1.5" />}
-                        Push
-                    </button>
-                    <button 
-                        onClick={handlePull} 
-                        disabled={isSyncing}
-                        className="flex-1 flex items-center justify-center px-2 py-1.5 bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 rounded text-xs font-medium text-zinc-700 dark:text-zinc-300 transition-colors disabled:opacity-50"
-                        title="Pull from GitHub"
-                    >
-                        {isSyncing ? <Loader2 size={14} className="animate-spin mr-1.5" /> : <DownloadCloud size={14} className="mr-1.5" />}
-                        Pull
-                    </button>
+                {/* Sync Status */}
+                <div className="flex items-center justify-center">
+                    {renderSyncStatus()}
                 </div>
 
                 <div className="flex items-center justify-between group">

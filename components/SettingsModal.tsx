@@ -7,12 +7,11 @@ import { X, Loader2, Check, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export default function SettingsModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { config, setConfig, notes, setNotes } = useNotes()
+  const { config, setConfig, setNotes, manualSync, syncStatus } = useNotes()
   const { data: session } = useSession()
-  
+
   const [repoName, setRepoName] = useState(config?.repo || '')
   const [branch, setBranch] = useState(config?.branch || 'main')
-  const [isSyncing, setIsSyncing] = useState(false)
   const [status, setStatus] = useState<{type: 'success' | 'error', message: string} | null>(null)
 
   // Update local state when config changes
@@ -39,29 +38,21 @@ export default function SettingsModal({ isOpen, onClose }: { isOpen: boolean; on
     setTimeout(() => setStatus(null), 2000)
   }
 
-  const handlePush = async () => {
+  const handleManualSync = async () => {
     if (!config) return
-    setIsSyncing(true)
     setStatus(null)
     try {
-      const res = await fetch('/api/github/push', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes, config })
-      })
-      if (!res.ok) throw new Error(await res.text())
-      setStatus({ type: 'success', message: 'Successfully pushed to GitHub' })
+      await manualSync()
+      setStatus({ type: 'success', message: 'Sync complete' })
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e)
       setStatus({ type: 'error', message })
-    } finally {
-      setIsSyncing(false)
     }
   }
 
-  const handlePull = async () => {
+  const handleRefresh = async () => {
     if (!config) return
-    setIsSyncing(true)
+    if (!confirm("This will refresh notes from cloud. Any unsaved local changes will be lost. Continue?")) return
     setStatus(null)
     try {
       const params = new URLSearchParams({
@@ -73,12 +64,10 @@ export default function SettingsModal({ isOpen, onClose }: { isOpen: boolean; on
       if (!res.ok) throw new Error(await res.text())
       const data = await res.json()
       setNotes(data.notes)
-      setStatus({ type: 'success', message: 'Successfully pulled from GitHub' })
+      setStatus({ type: 'success', message: 'Notes refreshed from cloud' })
     } catch (e: unknown) {
         const message = e instanceof Error ? e.message : String(e)
         setStatus({ type: 'error', message })
-    } finally {
-        setIsSyncing(false)
     }
   }
 
@@ -130,23 +119,24 @@ export default function SettingsModal({ isOpen, onClose }: { isOpen: boolean; on
                 </div>
 
                 <hr className="my-4 border-gray-200 dark:border-gray-800" />
-                
+
                 <div className="space-y-2">
-                    <h3 className="font-medium">Sync</h3>
+                    <h3 className="font-medium">Cloud Sync</h3>
+                    <p className="text-xs text-gray-500">Notes auto-save to cloud. Manual controls below.</p>
                     <div className="flex space-x-2">
-                        <button 
-                             onClick={handlePush}
-                             disabled={isSyncing || !config}
-                             className="flex-1 border border-gray-300 dark:border-gray-700 px-4 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                        <button
+                             onClick={handleManualSync}
+                             disabled={syncStatus === 'syncing' || !config}
+                             className="flex-1 border border-gray-300 dark:border-gray-700 px-4 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 text-sm"
                         >
-                            Push to GitHub
+                            Sync Now
                         </button>
-                        <button 
-                             onClick={handlePull}
-                             disabled={isSyncing || !config}
-                             className="flex-1 border border-gray-300 dark:border-gray-700 px-4 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                        <button
+                             onClick={handleRefresh}
+                             disabled={syncStatus === 'syncing' || !config}
+                             className="flex-1 border border-gray-300 dark:border-gray-700 px-4 py-2 rounded hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 text-sm"
                         >
-                            Pull from GitHub
+                            Refresh from Cloud
                         </button>
                     </div>
                 </div>
@@ -157,8 +147,8 @@ export default function SettingsModal({ isOpen, onClose }: { isOpen: boolean; on
                         {status.message}
                     </div>
                 )}
-                 
-                 {isSyncing && (
+
+                 {syncStatus === 'syncing' && (
                      <div className="flex items-center justify-center text-sm text-gray-500">
                          <Loader2 size={16} className="animate-spin mr-2" />
                          Syncing...
