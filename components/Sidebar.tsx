@@ -103,9 +103,16 @@ export default function Sidebar({ onOpenSettings }: { onOpenSettings: () => void
         )
       case 'error':
         return (
-          <div className="flex items-center text-xs text-red-600 dark:text-red-400">
-            <CloudOff size={12} className="mr-1.5" />
-            <span>Sync error</span>
+          <div className="flex flex-col items-center text-xs text-red-600 dark:text-red-400">
+            <div className="flex items-center">
+              <CloudOff size={12} className="mr-1.5" />
+              <span>Sync error</span>
+            </div>
+            {syncError && (
+              <span className="text-[10px] mt-0.5 text-center max-w-full truncate" title={syncError}>
+                {syncError}
+              </span>
+            )}
           </div>
         )
       default:

@@ -42,7 +42,10 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [syncError, setSyncError] = useState<string | null>(null)
   const { data: session } = useSession()
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const resetTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const hasLoadedRef = useRef(false)
+  const notesRef = useRef<Note[]>(notes)
+  const lastSyncedNotesRef = useRef<string>('') // Store hash of last synced state
 
   // Load from LocalStorage on mount
   useEffect(() => {
@@ -163,9 +166,20 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setNotesState(newNotes)
   }, [])
 
+  // Keep notesRef up to date
+  useEffect(() => {
+    notesRef.current = notes
+  }, [notes])
+
   // Auto-sync to GitHub with debouncing
   const syncToGitHub = useCallback(async () => {
     if (!config || !session) return
+
+    const currentNotes = notesRef.current
+    const notesHash = JSON.stringify(currentNotes)
+
+    // Skip if notes haven't changed since last sync
+    if (notesHash === lastSyncedNotesRef.current) return
 
     setSyncStatus('syncing')
     setSyncError(null)
@@ -174,7 +188,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const res = await fetch('/api/github/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes, config })
+        body: JSON.stringify({ notes: currentNotes, config })
       })
 
       if (!res.ok) {
@@ -182,16 +196,19 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         throw new Error(data.errors ? data.errors.join('\n') : await res.text())
       }
 
+      lastSyncedNotesRef.current = notesHash
       setSyncStatus('saved')
-      // Reset to idle after 2 seconds
-      setTimeout(() => setSyncStatus('idle'), 2000)
+
+      // Reset to idle after 2 seconds with cleanup tracking
+      if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current)
+      resetTimeoutRef.current = setTimeout(() => setSyncStatus('idle'), 2000)
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : 'Sync failed'
       setSyncError(message)
       setSyncStatus('error')
       console.error('Auto-sync failed:', message)
     }
-  }, [notes, config, session])
+  }, [config, session])
 
   // Debounced auto-sync when notes change
   useEffect(() => {
@@ -202,19 +219,22 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       clearTimeout(syncTimeoutRef.current)
     }
 
-    // Set new timeout for auto-sync (3 seconds after last change)
+    // Set new timeout for auto-sync (5 seconds to avoid rate limiting)
     syncTimeoutRef.current = setTimeout(() => {
       syncToGitHub()
-    }, 3000)
+    }, 5000)
 
     return () => {
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current)
       }
+      if (resetTimeoutRef.current) {
+        clearTimeout(resetTimeoutRef.current)
+      }
     }
   }, [notes, config, session, isLoading, syncToGitHub])
 
-  // Auto-pull on mount (after initial load)
+  // Auto-pull on mount (after initial load) with conflict detection
   useEffect(() => {
     const autoPull = async () => {
       if (!config || !session || hasLoadedRef.current) return
@@ -232,7 +252,19 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const data = await res.json()
 
         if (data.notes && data.notes.length > 0) {
-          setNotesState(data.notes)
+          const currentNotes = notesRef.current
+
+          // Only auto-pull if local notes are empty or match what we last synced
+          // This prevents overwriting unsaved local changes
+          if (currentNotes.length === 0 || currentNotes.length === 1 && currentNotes[0]?.id === 'welcome') {
+            // Safe to pull - no user data yet
+            setNotesState(data.notes)
+            lastSyncedNotesRef.current = JSON.stringify(data.notes)
+          } else {
+            // User has local data - skip auto-pull to prevent data loss
+            // They can manually use "Refresh from Cloud" if needed
+            console.log('Skipping auto-pull: local notes exist')
+          }
         }
       } catch (e: unknown) {
         console.log('Auto-pull skipped or failed:', e)
