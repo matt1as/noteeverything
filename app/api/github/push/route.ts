@@ -10,8 +10,33 @@ const turndownService = new TurndownService()
 
 // Helper function to build file path based on note hierarchy
 function buildNotePath(note: Note, notes: Note[], usedPaths: Set<string>): string {
-  const sanitizeSlug = (title: string) =>
-    title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'untitled'
+  /**
+   * Converts a note title into a filesystem-safe slug.
+   * - Lowercases the title.
+   * - Replaces non-alphanumeric characters with dashes.
+   * - Trims leading/trailing dashes.
+   * - Falls back to 'untitled' if the result is empty.
+   * 
+   * Note: This may result in significant truncation or loss of special characters.
+   * If the sanitized slug is much shorter than the original title, or if the fallback is used,
+   * a warning will be logged.
+   */
+  const sanitizeSlug = (title: string) => {
+    const sanitized = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (!sanitized) {
+      console.warn(
+        `[buildNotePath] Title "${title}" produced an empty slug. Using fallback "untitled".`
+      );
+      return 'untitled';
+    }
+    // Warn if the sanitized slug is much shorter than the original (e.g., >50% reduction)
+    if (sanitized.length < title.length / 2) {
+      console.warn(
+        `[buildNotePath] Title "${title}" was heavily truncated to "${sanitized}".`
+      );
+    }
+    return sanitized;
+  }
 
   // Build path from root to current note by traversing parent chain
   const pathSegments: string[] = []
