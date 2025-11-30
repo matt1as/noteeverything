@@ -6,6 +6,42 @@ import matter from "gray-matter"
 import { Note } from "@/types"
 import { NextResponse } from "next/server"
 
+// Helper function to recursively get all files in a directory
+async function getAllFilesRecursive(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  path: string,
+  branch: string
+): Promise<any[]> {
+  try {
+    const { data } = await octokit.rest.repos.getContent({
+      owner,
+      repo,
+      path,
+      ref: branch
+    })
+
+    if (!Array.isArray(data)) return []
+
+    const allFiles: any[] = []
+
+    for (const item of data) {
+      if (item.type === 'file') {
+        allFiles.push(item)
+      } else if (item.type === 'dir') {
+        const subFiles = await getAllFilesRecursive(octokit, owner, repo, item.path, branch)
+        allFiles.push(...subFiles)
+      }
+    }
+
+    return allFiles
+  } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+    if (e.status === 404) return []
+    throw e
+  }
+}
+
 export async function GET(req: Request) {
   const session = await getServerSession(authOptions)
   if (!session || !session.accessToken) {
@@ -26,22 +62,19 @@ export async function GET(req: Request) {
   })
 
   try {
-    const { data: files } = await octokit.rest.repos.getContent({
-      owner,
-      repo,
-      path: 'notes',
-      ref: branch
-    })
+    // Recursively get all markdown files from the notes directory
+    const files = await getAllFilesRecursive(octokit, owner, repo, 'notes', branch)
 
-    if (!Array.isArray(files)) {
+    if (!files || files.length === 0) {
       return NextResponse.json({ notes: [] })
     }
 
     const notes: Note[] = []
 
-    await Promise.all(files.map(async (file) => {
-      if (file.type !== 'file' || !file.name.endsWith('.md')) return
+    // Filter for markdown files only
+    const markdownFiles = files.filter(f => f.name.endsWith('.md'))
 
+    await Promise.all(markdownFiles.map(async (file) => {
       try {
         const { data: fileData } = await octokit.rest.repos.getContent({
           owner,
@@ -53,12 +86,12 @@ export async function GET(req: Request) {
         if ('content' in fileData && fileData.content) {
            const content = Buffer.from(fileData.content, 'base64').toString('utf-8')
            const { data: frontmatter, content: markdownBody } = matter(content)
-           
+
            const htmlContent = await marked.parse(markdownBody)
 
            notes.push({
              id: frontmatter.id || file.name.replace('.md', ''),
-             title: frontmatter.title || file.name,
+             title: frontmatter.title || file.name.replace('.md', ''),
              content: htmlContent,
              createdAt: frontmatter.createdAt || new Date().toISOString(),
              updatedAt: frontmatter.updatedAt || new Date().toISOString(),
