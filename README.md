@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# NoteEverything
 
-## Getting Started
+**NoteEverything** is a beautiful, modern, GitHub-backed note-taking application designed for developers. It combines the speed of local-first editing with the reliability of Git version control.
 
-First, run the development server:
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Next.js](https://img.shields.io/badge/Next.js-14-black)
+![Tailwind](https://img.shields.io/badge/Tailwind-v4-38bdf8)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## ✨ Features
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+*   **Local-First:** Instant saving to LocalStorage. Zero latency typing.
+*   **GitHub Sync:** Push and Pull notes directly to a private GitHub repository as Markdown files.
+*   **WYSIWYG Editor:** Powered by TipTap, supporting rich text, lists, and code blocks.
+*   **Modern UI:** "Linear-like" aesthetic with a polished Zinc theme (Light/Dark mode support).
+*   **Recursive Tree:** Organize notes in an unlimited hierarchy.
+*   **Portable:** Your notes are just Markdown files. No vendor lock-in.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🛠️ Tech Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+*   **Framework:** [Next.js 14](https://nextjs.org/) (App Router)
+*   **Language:** TypeScript
+*   **Styling:** Tailwind CSS v4 + Tailwind Typography
+*   **Auth:** NextAuth.js (GitHub Provider)
+*   **Editor:** TipTap
+*   **API:** Octokit (GitHub REST API)
 
-## Learn More
+## 🚀 Getting Started
 
-To learn more about Next.js, take a look at the following resources:
+### Prerequisites
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+*   Node.js 18+
+*   A GitHub Account
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Installation
 
-## Deploy on Vercel
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/yourusername/note-everything.git
+    cd note-everything
+    ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+3.  **Configure GitHub OAuth:**
+    *   Go to **[GitHub Developer Settings](https://github.com/settings/developers)**.
+    *   Create a **New OAuth App** (Not a GitHub App).
+    *   **Application Name:** NoteEverything
+    *   **Homepage URL:** `http://localhost:3000`
+    *   **Authorization callback URL:** `http://localhost:3000/api/auth/callback/github`
+    *   Copy the **Client ID** and generate a **Client Secret**.
+
+4.  **Set up Environment Variables:**
+    Copy the example file and update it with your credentials.
+    ```bash
+    cp .env.local.example .env.local
+    ```
+    Update `.env.local`:
+    ```env
+    GITHUB_ID=your_client_id_here
+    GITHUB_SECRET=your_client_secret_here
+    NEXTAUTH_SECRET=generate_with_openssl_rand_base64_32
+    NEXTAUTH_URL=http://localhost:3000
+    ```
+
+5.  **Run the App:**
+    ```bash
+    npm run dev
+    ```
+    Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## 📖 Usage
+
+1.  **Sign In:** Use the "Sign in" button in the sidebar to authenticate with GitHub.
+2.  **Configure Repo:** Click the **Settings (Gear)** icon. Enter your GitHub username and the name of the repository you want to sync with (e.g., `my-notes`). The repo must exist.
+3.  **Write:** Create notes using the **+** button.
+4.  **Sync:** Use the **Push (Cloud Arrow)** button in the sidebar footer to commit your changes to GitHub.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
