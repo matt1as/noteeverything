@@ -52,7 +52,7 @@ export default function SettingsModal({ isOpen, onClose }: { isOpen: boolean; on
 
   const handleRefresh = async () => {
     if (!config) return
-    if (!confirm("This will refresh notes from cloud. Any unsaved local changes will be lost. Continue?")) return
+    if (!confirm("This will refresh notes from cloud. Any changes made in the last 5 seconds may not be synced yet. Continue?")) return
     setStatus(null)
     try {
       const params = new URLSearchParams({

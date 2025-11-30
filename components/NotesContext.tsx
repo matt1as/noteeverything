@@ -44,6 +44,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const resetTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const hasLoadedRef = useRef(false)
+  const isInitialLoadRef = useRef(true)
   const notesRef = useRef<Note[]>(notes)
   const lastSyncedNotesRef = useRef<string>('') // Store hash of last synced state
 
@@ -212,7 +213,8 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Debounced auto-sync when notes change
   useEffect(() => {
-    if (isLoading || !config || !session) return
+    // Skip auto-sync during initial load to prevent syncing localStorage data
+    if (isLoading || !config || !session || isInitialLoadRef.current) return
 
     // Clear existing timeout
     if (syncTimeoutRef.current) {
@@ -251,13 +253,13 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (!res.ok) throw new Error(await res.text())
         const data = await res.json()
 
-        if (data.notes && data.notes.length > 0) {
+        if (data.notes) {
           const currentNotes = notesRef.current
 
-          // Only auto-pull if local notes are empty or match what we last synced
+          // Only auto-pull if local notes are empty or just the welcome note
           // This prevents overwriting unsaved local changes
-          if (currentNotes.length === 0 || currentNotes.length === 1 && currentNotes[0]?.id === 'welcome') {
-            // Safe to pull - no user data yet
+          if (currentNotes.length === 0 || (currentNotes.length === 1 && currentNotes[0]?.id === 'welcome')) {
+            // Safe to pull - no user data yet (allows syncing empty arrays too)
             setNotesState(data.notes)
             lastSyncedNotesRef.current = JSON.stringify(data.notes)
           } else {
@@ -269,6 +271,9 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       } catch (e: unknown) {
         console.log('Auto-pull skipped or failed:', e)
         // Silently fail - user can manually sync if needed
+      } finally {
+        // Mark initial load as complete after auto-pull attempt
+        isInitialLoadRef.current = false
       }
     }
 
