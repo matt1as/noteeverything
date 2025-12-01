@@ -63,6 +63,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const savedNotes = localStorage.getItem('note-everything-notes')
     const savedConfig = localStorage.getItem('note-everything-config')
     const savedActiveId = localStorage.getItem('note-everything-active-id')
+    const savedHash = localStorage.getItem('note-everything-last-synced-hash')
 
     if (savedNotes) {
       try {
@@ -95,6 +96,10 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (savedActiveId) {
         setActiveNoteId(savedActiveId)
+    }
+
+    if (savedHash) {
+      lastSyncedNotesRef.current = savedHash
     }
 
     setIsLoading(false)
@@ -213,6 +218,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       lastSyncedNotesRef.current = notesHash
+      localStorage.setItem('note-everything-last-synced-hash', notesHash)
       isDirtyRef.current = false // Reset after successful sync
       setSyncStatus('saved')
 
@@ -255,66 +261,85 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [notes, config, session, isLoading, syncToGitHub])
 
-  // Auto-pull on mount (after initial load) with conflict detection
-  useEffect(() => {
-    const autoPull = async () => {
-      if (!config || !session || hasLoadedRef.current) return
+  // Auto-pull function
+  const autoPull = useCallback(async () => {
+    if (!config || !session) return
 
-      hasLoadedRef.current = true
+    try {
+      const params = new URLSearchParams({
+        owner: config.owner,
+        repo: config.repo,
+        branch: config.branch
+      })
+      const res = await fetch(`/api/github/pull?${params.toString()}`)
+      
+      if (!isMountedRef.current) return
 
-      try {
-        const params = new URLSearchParams({
-          owner: config.owner,
-          repo: config.repo,
-          branch: config.branch
-        })
-        const res = await fetch(`/api/github/pull?${params.toString()}`)
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+
+      if (data.notes) {
+        const currentNotes = notesRef.current
+        const currentHash = JSON.stringify(currentNotes)
         
-        if (!isMountedRef.current) return
+        // Check if local notes are effectively "clean" (match last known sync state)
+        // This allows us to pull updates if the user hasn't made "offline" changes
+        // that deviate from what we last saw.
+        const isSynced = currentHash === lastSyncedNotesRef.current
 
-        if (!res.ok) throw new Error(await res.text())
-        const data = await res.json()
+        if (isDirtyRef.current) {
+          console.log('Skipping auto-pull: local changes detected (dirty flag)')
+          return
+        }
 
-        if (data.notes) {
-          const currentNotes = notesRef.current
+        const isEmpty = currentNotes.length === 0
+        const isWelcome = currentNotes.length === 1 && currentNotes[0]?.id === 'welcome'
 
-          if (isDirtyRef.current) {
-            console.log('Skipping auto-pull: local changes detected')
+        // Only auto-pull if:
+        // 1. We are in sync with what we last saw (safe update), OR
+        // 2. Local is empty/welcome (safe init)
+        if (isSynced || isEmpty || isWelcome) {
+          
+          // Prevent wiping Welcome note if cloud is empty
+          if (data.notes.length === 0 && currentNotes.length > 0) {
+            console.log('Skipping auto-pull: cloud is empty, preserving Welcome note')
             return
           }
 
-          // Only auto-pull if local notes are empty or just the welcome note
-          // This prevents overwriting unsaved local changes
-          if (currentNotes.length === 0 || (currentNotes.length === 1 && currentNotes[0]?.id === 'welcome')) {
-            
-            // Prevent wiping Welcome note if cloud is empty
-            if (data.notes.length === 0 && currentNotes.length > 0) {
-              console.log('Skipping auto-pull: cloud is empty, preserving Welcome note')
-              return
-            }
-
-            // Safe to pull - no user data yet (allows syncing empty arrays too)
-            setNotesState(data.notes)
-            lastSyncedNotesRef.current = JSON.stringify(data.notes)
-          } else {
-            // User has local data - skip auto-pull to prevent data loss
-            // They can manually use "Refresh from Cloud" if needed
-            console.log('Skipping auto-pull: local notes exist')
-          }
+          // Safe to pull
+          setNotesState(data.notes)
+          const newHash = JSON.stringify(data.notes)
+          lastSyncedNotesRef.current = newHash
+          localStorage.setItem('note-everything-last-synced-hash', newHash)
+          console.log('Auto-pull successful')
+        } else {
+          // User has local data that is NOT marked dirty but ALSO doesn't match last sync.
+          // This implies "Offline Changes" from a previous session that weren't synced.
+          // We skip pull to avoid data loss.
+          console.log('Skipping auto-pull: local notes exist and do not match last sync state')
         }
-      } catch (e: unknown) {
-        console.log('Auto-pull skipped or failed:', e)
-        // Silently fail - user can manually sync if needed
-      } finally {
-        // Mark initial load as complete after auto-pull attempt
-        isInitialLoadRef.current = false
       }
+    } catch (e: unknown) {
+      console.log('Auto-pull skipped or failed:', e)
+      // Silently fail - user can manually sync if needed
     }
+  }, [config, session])
 
-    if (!isLoading) {
-      autoPull()
-    }
-  }, [config, session, isLoading])
+  // Auto-pull on mount (after initial load), on config change, and periodically
+  useEffect(() => {
+    if (isLoading || !config || !session) return
+
+    // Initial/Config-change pull
+    autoPull()
+
+    // Mark initial load as complete (if relevant for other logic, though less used now)
+    isInitialLoadRef.current = false
+
+    // Periodic pull (every 60 seconds)
+    const intervalId = setInterval(autoPull, 60000)
+
+    return () => clearInterval(intervalId)
+  }, [config, session, isLoading, autoPull])
 
   // Manual sync function
   const manualSync = useCallback(async () => {
