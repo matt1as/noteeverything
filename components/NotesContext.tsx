@@ -47,6 +47,16 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const isInitialLoadRef = useRef(true)
   const notesRef = useRef<Note[]>(notes)
   const lastSyncedNotesRef = useRef<string>('') // Store hash of last synced state
+  const isDirtyRef = useRef(false)
+  const isMountedRef = useRef(true)
+
+  // Track component mount status
+  useEffect(() => {
+    isMountedRef.current = true
+    return () => {
+      isMountedRef.current = false
+    }
+  }, [])
 
   // Load from LocalStorage on mount
   useEffect(() => {
@@ -115,6 +125,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 
   const addNote = useCallback((parentId: string | null = null) => {
+    isDirtyRef.current = true
     const newNote: Note = {
       id: uuidv4(),
       title: 'New Note',
@@ -128,6 +139,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [])
 
   const updateNote = useCallback((id: string, updates: Partial<Note>) => {
+    isDirtyRef.current = true
     setNotesState((prev) =>
       prev.map((note) =>
         note.id === id
@@ -138,6 +150,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [])
 
   const deleteNote = useCallback((id: string) => {
+    isDirtyRef.current = true
     setNotesState((prev) => {
       // Recursive delete
       const idsToDelete = new Set<string>([id])
@@ -192,18 +205,24 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         body: JSON.stringify({ notes: currentNotes, config })
       })
 
+      if (!isMountedRef.current) return
+
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.errors ? data.errors.join('\n') : await res.text())
       }
 
       lastSyncedNotesRef.current = notesHash
+      isDirtyRef.current = false // Reset after successful sync
       setSyncStatus('saved')
 
       // Reset to idle after 2 seconds with cleanup tracking
       if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current)
-      resetTimeoutRef.current = setTimeout(() => setSyncStatus('idle'), 2000)
+      resetTimeoutRef.current = setTimeout(() => {
+        if (isMountedRef.current) setSyncStatus('idle')
+      }, 2000)
     } catch (e: unknown) {
+      if (!isMountedRef.current) return
       const message = e instanceof Error ? e.message : 'Sync failed'
       setSyncError(message)
       setSyncStatus('error')
@@ -250,15 +269,30 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           branch: config.branch
         })
         const res = await fetch(`/api/github/pull?${params.toString()}`)
+        
+        if (!isMountedRef.current) return
+
         if (!res.ok) throw new Error(await res.text())
         const data = await res.json()
 
         if (data.notes) {
           const currentNotes = notesRef.current
 
+          if (isDirtyRef.current) {
+            console.log('Skipping auto-pull: local changes detected')
+            return
+          }
+
           // Only auto-pull if local notes are empty or just the welcome note
           // This prevents overwriting unsaved local changes
           if (currentNotes.length === 0 || (currentNotes.length === 1 && currentNotes[0]?.id === 'welcome')) {
+            
+            // Prevent wiping Welcome note if cloud is empty
+            if (data.notes.length === 0 && currentNotes.length > 0) {
+              console.log('Skipping auto-pull: cloud is empty, preserving Welcome note')
+              return
+            }
+
             // Safe to pull - no user data yet (allows syncing empty arrays too)
             setNotesState(data.notes)
             lastSyncedNotesRef.current = JSON.stringify(data.notes)
