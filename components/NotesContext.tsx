@@ -43,12 +43,14 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const { data: session } = useSession()
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const resetTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const hasLoadedRef = useRef(false)
   const isInitialLoadRef = useRef(true)
   const notesRef = useRef<Note[]>(notes)
   const lastSyncedNotesRef = useRef<string>('') // Store hash of last synced state
   const isDirtyRef = useRef(false)
   const isMountedRef = useRef(true)
+  const autoPullRef = useRef<() => Promise<void>>(async () => {})
+
+  const AUTO_PULL_INTERVAL_MS = 60_000
 
   // Track component mount status
   useEffect(() => {
@@ -325,21 +327,28 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, [config, session])
 
+  // Update autoPullRef whenever autoPull changes
+  useEffect(() => {
+    autoPullRef.current = autoPull
+  }, [autoPull])
+
   // Auto-pull on mount (after initial load), on config change, and periodically
   useEffect(() => {
     if (isLoading || !config || !session) return
 
     // Initial/Config-change pull
-    autoPull()
+    autoPullRef.current()
 
     // Mark initial load as complete (if relevant for other logic, though less used now)
     isInitialLoadRef.current = false
 
-    // Periodic pull (every 60 seconds)
-    const intervalId = setInterval(autoPull, 60000)
+    // Periodic pull
+    const intervalId = setInterval(() => {
+      autoPullRef.current()
+    }, AUTO_PULL_INTERVAL_MS)
 
     return () => clearInterval(intervalId)
-  }, [config, session, isLoading, autoPull])
+  }, [config, session, isLoading]) // Stable dependencies
 
   // Manual sync function
   const manualSync = useCallback(async () => {
