@@ -265,7 +265,10 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Auto-pull function
   const autoPull = useCallback(async () => {
-    if (!config || !session) return
+    if (!config || !session || syncStatus === 'syncing') return
+
+    // Pause auto-pull when tab is hidden to save resources and API limits
+    if (document.hidden) return
 
     try {
       const params = new URLSearchParams({
@@ -295,7 +298,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         const isSynced = currentHash === lastSyncedNotesRef.current
 
         if (isDirtyRef.current) {
-          console.log('Skipping auto-pull: local changes detected (dirty flag)')
+          // console.log('Skipping auto-pull: local changes detected (dirty flag)')
           return
         }
 
@@ -309,7 +312,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           
           // Prevent wiping Welcome note if cloud is empty
           if (data.notes.length === 0 && currentNotes.length > 0) {
-            console.log('Skipping auto-pull: cloud is empty, preserving Welcome note')
+            // console.log('Skipping auto-pull: cloud is empty, preserving Welcome note')
             return
           }
 
@@ -322,19 +325,19 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             lastSyncedNotesRef.current = newHash
             localStorage.setItem('note-everything-last-synced-hash', newHash)
           }
-          console.log('Auto-pull successful')
+          // console.log('Auto-pull successful')
         } else {
           // User has local data that is NOT marked dirty but ALSO doesn't match last sync.
           // This implies "Offline Changes" from a previous session that weren't synced.
           // We skip pull to avoid data loss.
-          console.log('Skipping auto-pull: local notes exist and do not match last sync state')
+          // console.log('Skipping auto-pull: local notes exist and do not match last sync state')
         }
       }
     } catch (e: unknown) {
-      console.log('Auto-pull skipped or failed:', e)
+      console.error('Auto-pull skipped or failed:', e)
       // Silently fail - user can manually sync if needed
     }
-  }, [config, session])
+  }, [config, session, syncStatus])
 
   // Update autoPullRef whenever autoPull changes
   useEffect(() => {
@@ -342,6 +345,9 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [autoPull])
 
   // Auto-pull on mount (after initial load), on config change, and periodically
+  // We use a ref for autoPull to avoid restarting the interval whenever the 
+  // function identity changes (e.g. due to syncStatus or config changes).
+  // This ensures a stable 60s interval while always calling the latest logic.
   useEffect(() => {
     if (isLoading || !config || !session) return
 
