@@ -213,6 +213,7 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
 
       lastSyncedNotesRef.current = notesHash
+      isDirtyRef.current = false // Reset after successful sync
       setSyncStatus('saved')
 
       // Reset to idle after 2 seconds with cleanup tracking
