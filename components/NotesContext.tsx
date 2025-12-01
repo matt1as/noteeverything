@@ -277,7 +277,12 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       
       if (!isMountedRef.current) return
 
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          setSyncError('Authentication required. Please reconnect your GitHub account.')
+        }
+        throw new Error(await res.text())
+      }
       const data = await res.json()
 
       if (data.notes) {
@@ -311,8 +316,12 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           // Safe to pull
           setNotesState(data.notes)
           const newHash = JSON.stringify(data.notes)
-          lastSyncedNotesRef.current = newHash
-          localStorage.setItem('note-everything-last-synced-hash', newHash)
+          
+          // Only write to localStorage if the hash actually changed
+          if (newHash !== lastSyncedNotesRef.current) {
+            lastSyncedNotesRef.current = newHash
+            localStorage.setItem('note-everything-last-synced-hash', newHash)
+          }
           console.log('Auto-pull successful')
         } else {
           // User has local data that is NOT marked dirty but ALSO doesn't match last sync.
