@@ -69,7 +69,6 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     if (savedNotes) {
       try {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
         setNotesState(JSON.parse(savedNotes))
       } catch (e) {
         console.error('Failed to parse notes', e)
@@ -158,23 +157,21 @@ export const NotesProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const deleteNote = useCallback((id: string) => {
     isDirtyRef.current = true
-    setNotesState((prev) => {
-      // Recursive delete
-      const idsToDelete = new Set<string>([id])
-      
-      const findChildren = (parentId: string) => {
-        prev.forEach(n => {
-          if (n.parentId === parentId) {
-            idsToDelete.add(n.id)
-            findChildren(n.id)
-          }
-        })
-      }
-      findChildren(id)
+    const idsToDelete = new Set<string>([id])
 
-      return prev.filter((n) => !idsToDelete.has(n.id))
-    })
-    if (activeNoteId === id) {
+    const findChildren = (parentId: string) => {
+      notesRef.current.forEach(n => {
+        if (n.parentId === parentId) {
+          idsToDelete.add(n.id)
+          findChildren(n.id)
+        }
+      })
+    }
+    findChildren(id)
+
+    setNotesState((prev) => prev.filter((n) => !idsToDelete.has(n.id)))
+
+    if (activeNoteId && idsToDelete.has(activeNoteId)) {
       setActiveNoteId(null)
     }
   }, [activeNoteId])
