@@ -8,6 +8,13 @@ import { NextResponse } from "next/server"
 
 const turndownService = new TurndownService()
 
+type RepoContentItem = {
+  type: "file" | "dir"
+  path: string
+  name: string
+  sha?: string
+}
+
 // Helper function to build file path based on note hierarchy
 function buildNotePath(note: Note, notes: Note[], usedPaths: Set<string>): string {
   /**
@@ -78,7 +85,7 @@ async function getAllFilesRecursive(
   repo: string,
   path: string,
   branch: string
-): Promise<any[]> {
+): Promise<RepoContentItem[]> {
   try {
     const { data } = await octokit.rest.repos.getContent({
       owner,
@@ -89,7 +96,7 @@ async function getAllFilesRecursive(
 
     if (!Array.isArray(data)) return []
 
-    const allFiles: any[] = []
+    const allFiles: RepoContentItem[] = []
 
     for (const item of data) {
       if (item.type === 'file') {
@@ -101,8 +108,13 @@ async function getAllFilesRecursive(
     }
 
     return allFiles
-  } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-    if (e.status === 404) return []
+  } catch (e: unknown) {
+    if (typeof e === "object" && e && "status" in e) {
+      const { status } = e as { status?: number }
+      if (status === 404) {
+        return []
+      }
+    }
     throw e
   }
 }
@@ -129,16 +141,23 @@ export async function POST(req: Request) {
   const errors: string[] = []
 
   // 1. Get all current files recursively in notes/ directory to find deletions and SHAs
-  let currentFiles: any[] = []
+  let currentFiles: RepoContentItem[] = []
   try {
     currentFiles = await getAllFilesRecursive(octokit, owner, repo, 'notes', branch)
-  } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-    if (e.status === 404) {
-      // Folder doesn't exist, which is fine (first push)
-      currentFiles = []
+  } catch (e: unknown) {
+    if (typeof e === "object" && e && "status" in e) {
+      const { status } = e as { status?: number }
+      if (status === 404) {
+        // Folder doesn't exist, which is fine (first push)
+        currentFiles = []
+      } else {
+        console.error("Error fetching notes folder:", e)
+        const message = "message" in (e as Record<string, unknown>) ? String((e as { message?: string }).message) : String(e)
+        return new NextResponse(`Failed to access repo: ${message}`, { status: 500 })
+      }
     } else {
-       console.error("Error fetching notes folder:", e)
-       return new NextResponse(`Failed to access repo: ${e.message || String(e)}`, { status: 500 })
+      console.error("Error fetching notes folder:", e)
+      return new NextResponse(`Failed to access repo: ${String(e)}`, { status: 500 })
     }
   }
 

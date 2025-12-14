@@ -6,6 +6,14 @@ import matter from "gray-matter"
 import { Note } from "@/types"
 import { NextResponse } from "next/server"
 
+type RepoContentItem = {
+  type: "file" | "dir"
+  path: string
+  name: string
+  sha?: string
+  content?: string
+}
+
 // Helper function to recursively get all files in a directory
 async function getAllFilesRecursive(
   octokit: Octokit,
@@ -13,7 +21,7 @@ async function getAllFilesRecursive(
   repo: string,
   path: string,
   branch: string
-): Promise<any[]> {
+): Promise<RepoContentItem[]> {
   try {
     const { data } = await octokit.rest.repos.getContent({
       owner,
@@ -24,7 +32,7 @@ async function getAllFilesRecursive(
 
     if (!Array.isArray(data)) return []
 
-    const allFiles: any[] = []
+    const allFiles: RepoContentItem[] = []
 
     for (const item of data) {
       if (item.type === 'file') {
@@ -36,8 +44,13 @@ async function getAllFilesRecursive(
     }
 
     return allFiles
-  } catch (e: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-    if (e.status === 404) return []
+  } catch (e: unknown) {
+    if (typeof e === "object" && e && "status" in e) {
+      const { status } = e as { status?: number }
+      if (status === 404) {
+        return []
+      }
+    }
     throw e
   }
 }

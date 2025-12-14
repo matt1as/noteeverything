@@ -77,7 +77,7 @@ const NoteItem = ({ noteId, level = 0 }: { noteId: string, level?: number }) => 
 }
 
 export default function Sidebar({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const { notes, addNote, config, syncStatus, syncError, manualSync } = useNotes()
+  const { notes, addNote, config, syncStatus, syncError } = useNotes()
   const { data: session } = useSession()
 
   const rootNotes = notes.filter((n) => !n.parentId)
@@ -189,10 +189,20 @@ export default function Sidebar({ onOpenSettings }: { onOpenSettings: () => void
                         </div>
                     </div>
                     <div className="flex items-center">
-                        <button onClick={onOpenSettings} className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors">
+                        <button
+                            onClick={onOpenSettings}
+                            title="Open settings"
+                            aria-label="Open settings"
+                            className="p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-md text-zinc-500 transition-colors"
+                        >
                             <Settings size={16} />
                         </button>
-                        <button onClick={() => signOut()} className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-500 rounded-md text-zinc-400 transition-colors">
+                        <button
+                            onClick={() => signOut()}
+                            title="Sign out"
+                            aria-label="Sign out"
+                            className="p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-500 rounded-md text-zinc-400 transition-colors"
+                        >
                             <LogOut size={16} />
                         </button>
                     </div>
